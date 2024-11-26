@@ -1,0 +1,334 @@
+---
+title: "Sanket Project"
+author: "Sanket"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+
+```{r}
+options(repos = c(CRAN = "https://cloud.r-project.org"))
+
+#install.packages
+library(readxl)
+library(knitr)
+library(TTR)
+library(dplyr)
+library(ggplot2)
+library(forecast)
+library(tidyverse)
+library(tseries)
+
+# Load the Excel file
+data  <- read.csv("C:/Users/Sanket Khamkar/Downloads/Data Dictionary_Sanket.csv")
+names(data)
+knitr::kable(data)
+head(data)
+
+# Function to convert 'Year_Quarter' to start date for each quarter
+convert_quarter_to_date <- function(quarter) {
+  if (is.na(quarter)) {
+    return(NA)  # Return NA if quarter is missing
+  }
+  year <- as.numeric(substr(quarter, 1, 4))
+  q <- substr(quarter, 6, 7)
+  
+  if (q == "Q1") {
+    return(as.Date(paste0(year, "-01-01")))
+  } else if (q == "Q2") {
+    return(as.Date(paste0(year, "-04-01")))
+  } else if (q == "Q3") {
+    return(as.Date(paste0(year, "-07-01")))
+  } else if (q == "Q4") {
+    return(as.Date(paste0(year, "-10-01")))
+  } else {
+    return(NA)  # Return NA if the quarter is not in a recognized format
+  }
+}
+
+# Apply the conversion to the 'Year Quarter' column
+data$Date <- sapply(data$`Year_Quarter`, convert_quarter_to_date)
+
+# Convert the 'Rate' column to numeric and clean up the data
+data$FertilityRate <- as.numeric(data$FertilityRate)
+data <- data[!is.na(data$Date) & !is.na(data$FertilityRate), ]
+data$MortalityRate <- as.numeric(data$MortalityRate)
+data <- data[!is.na(data$Date) & !is.na(data$MortalityRate), ]
+# Ensure Date column is a factor (or convert as needed)
+data$Date <- as.factor(data$Date)
+
+```
+
+```{r}
+# Filter for 'All races and origins' and set time series
+data_filtered <- subset(data, Group == "All races and origins")
+ts_data <- ts(data_filtered$FertilityRate, start = c(2022, 1), frequency = 4)
+
+# Plot the time series
+plot(ts_data , main = "Fertility Rate Time Series", ylab = "Fertility Rate", xlab = "Time")
+
+```
+
+
+```{r}
+#Mean forecast
+mean_model <- meanf(ts_data, h = 12)
+
+# Plot the forecast
+autoplot(mean_model) + ggtitle("Mean Forecast for Fertility Rate")
+
+forecast(mean_model)
+
+# Residual Analysis
+checkresiduals(mean_model)
+```
+Uses the average of past data as the forecast. Best for stationary data without trends or seasonality. Residuals should be random, indicating that the mean is a suitable representation.
+
+
+```{r}
+#Naive forecast
+naive_model <- naive(ts_data, h = 12)
+
+# Plot the forecast
+autoplot(naive_model) + ggtitle("Naive Forecast for Fertility Rate")
+
+forecast(naive_model)
+
+# Residual Analysis
+checkresiduals(naive_model)
+
+```
+Suitable for short-term forecasts where the most recent observation is the best predictor. Ideal for data without trends or seasonality. Random residuals indicate a good fit.
+```{r}
+#Seasonal Naive forecast
+snaive_forecast <- snaive(ts_data,  h = 12)
+# Plot the forecast
+autoplot(snaive_forecast) + ggtitle("Seasnoal Naive Forecast for Fertility Rate")
+
+forecast(snaive_forecast)
+
+# Residual Analysis
+checkresiduals(snaive_forecast)
+```
+Suitable for data with strong seasonal patterns. It uses the value from the same season in the previous cycle. Residuals should be random if seasonality is captured effectively.
+
+```{r}
+
+#Random walk forecast
+rwf_forecast <- rwf(ts_data,h = 12)
+rwf_forecast <- rwf(ts_data,h = 12, drift=TRUE)
+autoplot(rwf_forecast) + ggtitle("Random Walk Forecast for Fertility Rate")
+
+forecast(rwf_forecast)
+
+# Residual Analysis
+checkresiduals(rwf_forecast)
+```
+Useful for data that has a persistent random walk behavior, sometimes with a drift representing a trend. Residuals should be random if the drift captures the trend accurately.
+
+```{r}
+# Simple Exponential Smoothing
+ses_model <- ses(ts_data, h = 12)
+
+# Plot the forecast
+autoplot(ses_model) + ggtitle("SES Forecast for Fertility Rate")
+
+forecast(ses_model)
+# Residual Analysis
+checkresiduals(ses_model)
+
+```
+Works well for level data without trend or seasonality. Residuals should resemble white noise if the model fits correctly.
+
+```{r}
+# Fit an ETS model
+ets_model <- ets(ts_data)
+
+# Forecast the next 12 months
+ets_forecast <- forecast(ets_model, h = 12)
+
+# Plot the forecast
+autoplot(ets_forecast) + ggtitle("ETS Forecast for Fertility Rate")
+
+forecast(ets_forecast)
+# Residual Analysis
+checkresiduals(ets_forecast)
+
+```
+
+Captures level, trend, and seasonality effectively. Residuals should be random and without autocorrelation to indicate a good model fit.
+
+```{r}
+#Moving Average forecast
+MA5_forecast <- ma(ts_data,order=5)
+# Plot the forecast
+autoplot(MA5_forecast) + ggtitle("Moving Average5 Forecast for Fertility Rate")
+
+
+forecast(MA5_forecast)
+# Residual Analysis
+checkresiduals(MA5_forecast)
+
+#Moving Average forecast
+MA9_forecast <- ma(ts_data,order=9)
+# Plot the forecast
+autoplot(MA9_forecast) + ggtitle("Moving Average9 Forecast for Fertility Rate")
+# Residual Analysis
+forecast(MA9_forecast)
+checkresiduals(MA9_forecast)
+
+```
+Good for smoothing and reducing noise. Does not effectively capture trend or seasonality. Significant residual lags suggest it may not fit dynamic time series with trends.
+
+```{r}
+##Decomposition
+decomp <- decompose(ts_data, type = "additive")  
+# Plot the Decomposition
+autoplot(decomp) + ggtitle("Decomposition Addictive Forecast for Fertility Rate")
+
+
+residuals <- decomp$random
+
+residuals_clean <- na.omit(residuals)
+
+# Plot the ACF of the cleaned residuals
+acf(residuals_clean, main = "ACF of Residuals After Decomposition (NA Removed)")
+
+# Plot the residuals
+autoplot(residuals, main = "Residuals After Decomposition") + ggtitle("Residual Component of Decomposition")
+
+forecast(residuals_clean)
+
+# Histogram of residuals
+hist(residuals, main = "Histogram of Residuals", xlab = "Residuals", breaks = 15)
+
+# Ljung-Box test for residuals
+Box.test(residuals, lag = 10, type = "Ljung-Box")
+```
+Separates data into trend, seasonal, and residual components. Residual patterns indicate how well the model captures these components; randomness means effective decomposition.
+
+```{r}
+# Decompose the time series
+stl_decomposition <- stl(ts_data, s.window = "periodic")
+
+# Plot the decomposition
+autoplot(stl_decomposition) + ggtitle("STL Decomposition of Fertility Rate")
+
+# Forecast the next 12 months
+stl_forecast <- forecast(stl_decomposition, h = 12)
+
+# Plot the forecast
+autoplot(stl_forecast) + ggtitle("STL Forecast for Fertility Rate")
+
+forecast(stl_forecast)
+
+# Residual Analysis
+checkresiduals(stl_forecast)
+```
+Handles non-linear seasonality and trend effectively. Residuals should be random if both trend and seasonal components are adequately captured.
+
+```{r}
+# Holt-Winters Seasonal Model
+hw_model <- hw(ts_data, seasonal = "additive", h = 12)
+
+# Plot the forecast
+autoplot(hw_model) + ggtitle("Holt-Winters Forecast for Fertility")
+
+forecast(stl_forecast)
+# Residual Analysis
+checkresiduals(hw_model)
+```
+Captures both trend and seasonality, making it suitable for data with both components. Random residuals indicate a successful capture of underlying dynamics.
+
+```{r}
+
+
+# Fit an ARIMA model
+arima_model <- auto.arima(ts_data)
+
+# Forecast the next 12 months
+arima_forecast <- forecast(arima_model, h = 12)
+
+# Plot the forecast
+autoplot(arima_forecast) + ggtitle("ARIMA Forecast for Fertility")
+
+forecast(arima_forecast)
+# Residual Analysis
+checkresiduals(arima_model)
+
+```
+Suitable for data with auto-regressive components, differencing to make data stationary, and moving average terms. Residuals should resemble white noise without autocorrelation, indicating that the ARIMA model has properly fit the data.
+
+```{r}
+#Regression Analysis
+
+plot(data[,-1])  # Remove non-numeric columns, if necessary
+# Select only numeric columns for the pairs plot
+numeric_data <- data[sapply(data, is.numeric)]
+
+
+str(numeric_data)
+
+# Plot pairs only if there are at least two numeric columns
+if (ncol(numeric_data) > 1) {
+    pairs(numeric_data)
+} else {
+    print("Not enough numeric columns for pairwise plot")
+}
+
+# Summary and correlation
+summary(data)
+cor(numeric_data)
+
+# Histograms and Scatter Plots
+hist(data$MortalityRate, main="Histogram of Mortality Rate", xlab="Mortality Rate")
+plot(MortalityRate ~ FertilityRate, data=data)
+plot(jitter(MortalityRate) ~ jitter(FertilityRate), data=data)
+
+# Fit linear regression model
+fit <- lm(MortalityRate ~ FertilityRate, data=data)
+print(fit)
+
+plot(fit)
+summary(fit)
+
+anova(fit)
+
+# Residual analysis
+res <- residuals(fit)
+plot(jitter(res) ~ jitter(data$FertilityRate), main="Residuals vs Fertility Rate")
+abline(h=0, col="red")
+hist(res, main = "Residuals of the Model", xlab = "Residuals")
+
+# Predicted value for the first data point
+fitted(fit)[1]
+```
+
+To explain insights at the residuals, we will see differences between actual mortality rates and what our model predicted.
+
+Residuals vs. Fitted Values Plot: Here, we’re looking for a random scatter of points around zero. If we see that randomness, it means our model is appropriate. But if we spot patterns, it might mean our model is missing something important.
+
+Histogram of Residuals: This histogram shows the spread of prediction errors. Ideally, it looks like a bell curve centered at zero, which would indicate that most of our predictions are close to the actual values. If it’s skewed or off-center, it could mean our model is biased or not capturing some factors correctly.
+
+Q-Q Plot: This plot checks if the residuals follow a normal distribution. If the points align closely with a straight line, it confirms that our errors are distributed as expected, reinforcing the model’s reliability. If not, it might hint at some model issues or the need for additional predictors.
+
+Summary for Regression:
+If the residuals look random and normally distributed, it shows that fertility rate is a good predictor for mortality rate in our data.
+If we see patterns in residuals or deviations from normality, it might be worth revisiting the model—possibly by adding more factors, transforming some data, or even trying a different type of model to capture the relationship more accurately.
+
+```{r}
+# Accuracy checked
+# Pick an accuracy measure, compare your models, and state the best model based on the accuracy comparison
+
+accuracy(mean_model)
+accuracy(naive_model)
+accuracy(rwf_forecast)
+accuracy(snaive_forecast)
+accuracy(ses_model)
+accuracy(ets_forecast)
+accuracy(stl_forecast)
+accuracy(hw_model)
+accuracy(arima_model)
+```
+
+
